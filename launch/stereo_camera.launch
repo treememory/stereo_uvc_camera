@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Camera Parameters -->
+  <arg name="device_index" default="0" />
+  <arg name="width" default="3840" />
+  <arg name="height" default="1080" />
+  <arg name="fps" default="60" />
+  <arg name="use_mjpeg" default="true" />
+  <arg name="split_ratio" default="0.5" />
+  
+  <!-- Camera Names and Frames -->
+  <arg name="left_camera_name" default="left_camera" />
+  <arg name="right_camera_name" default="right_camera" />
+  <arg name="left_frame_id" default="left_camera_optical_frame" />
+  <arg name="right_frame_id" default="right_camera_optical_frame" />
+  
+  <!-- Topic Names -->
+  <arg name="left_image_topic" default="/left_camera" />
+  <arg name="right_image_topic" default="/right_camera" />
+  
+  <!-- Camera Info -->
+  <arg name="left_camera_info_url" default="" />
+  <arg name="right_camera_info_url" default="" />
+
+  <!-- Start the camera node -->
+  <node name="stereo_camera_node" pkg="stereo_camera_ros" type="stereo_camera_node" output="screen">
+    <param name="device_index" value="$(arg device_index)" />
+    <param name="width" value="$(arg width)" />
+    <param name="height" value="$(arg height)" />
+    <param name="fps" value="$(arg fps)" />
+    <param name="use_mjpeg" value="$(arg use_mjpeg)" />
+    <param name="split_ratio" value="$(arg split_ratio)" />
+    
+    <param name="left_camera_name" value="$(arg left_camera_name)" />
+    <param name="right_camera_name" value="$(arg right_camera_name)" />
+    <param name="left_frame_id" value="$(arg left_frame_id)" />
+    <param name="right_frame_id" value="$(arg right_frame_id)" />
+    
+    <param name="left_image_topic" value="$(arg left_image_topic)" />
+    <param name="right_image_topic" value="$(arg right_image_topic)" />
+    
+    <param name="left_camera_info_url" value="$(arg left_camera_info_url)" />
+    <param name="right_camera_info_url" value="$(arg right_camera_info_url)" />
+  </node>
+  
+</launch>
