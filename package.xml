@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>stereo_camera_ros</name>
   <version>0.1.0</version>
   <description>ROS driver for UVC stereo cameras</description>
@@ -7,16 +8,38 @@
   <maintainer email="user@example.com">User</maintainer>
   <license>MIT</license>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <!-- ROS1 构建工具依赖 -->
+  <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
   
-  <depend>roscpp</depend>
-  <depend>sensor_msgs</depend>
-  <depend>std_msgs</depend>
-  <depend>image_transport</depend>
-  <depend>camera_info_manager</depend>
-  <depend>cv_bridge</depend>
-  <depend>dynamic_reconfigure</depend>
-
+  <!-- ROS2 构建工具依赖 -->
+  <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake</buildtool_depend>
+  <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake_ros</buildtool_depend>
+  
+  <!-- 两个版本共同的依赖 -->
+  <depend>opencv</depend>
+  <depend>libjpeg</depend>
+  
+  <!-- ROS1 依赖 -->
+  <depend condition="$ROS_VERSION == 1">roscpp</depend>
+  <depend condition="$ROS_VERSION == 1">sensor_msgs</depend>
+  <depend condition="$ROS_VERSION == 1">std_msgs</depend>
+  <depend condition="$ROS_VERSION == 1">image_transport</depend>
+  <depend condition="$ROS_VERSION == 1">camera_info_manager</depend>
+  <depend condition="$ROS_VERSION == 1">cv_bridge</depend>
+  <depend condition="$ROS_VERSION == 1">dynamic_reconfigure</depend>
+  
+  <!-- ROS2 依赖 -->
+  <depend condition="$ROS_VERSION == 2">rclcpp</depend>
+  <depend condition="$ROS_VERSION == 2">sensor_msgs</depend>
+  <depend condition="$ROS_VERSION == 2">std_msgs</depend>
+  <depend condition="$ROS_VERSION == 2">image_transport</depend>
+  <depend condition="$ROS_VERSION == 2">camera_info_manager</depend>
+  <depend condition="$ROS_VERSION == 2">cv_bridge</depend>
+  <depend condition="$ROS_VERSION == 2">ament_index_cpp</depend>
+  
+  <!-- ROS2 导出部分 -->
   <export>
+    <build_type condition="$ROS_VERSION == 1">catkin</build_type>
+    <build_type condition="$ROS_VERSION == 2">ament_cmake</build_type>
   </export>
 </package>

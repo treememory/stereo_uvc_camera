@@ -184,6 +184,7 @@ void StereoCamera::uvcFrameCallback(uvc_frame_t* frame, void* ptr) {
     }
 }
 
+uint64_t last_show_fps_time = 0;
 void StereoCamera::processFrame(uvc_frame_t* frame) {
     if (!frame || frame->data_bytes == 0) return;
     
@@ -191,6 +192,15 @@ void StereoCamera::processFrame(uvc_frame_t* frame) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     uint64_t timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+    m_frame_timestamp_history.push_back(timestamp);
+    while(m_frame_timestamp_history.size() > 100) {
+        m_frame_timestamp_history.pop_front();
+    }
+    if(m_frame_timestamp_history.size() > 2 && timestamp - last_show_fps_time > 1e9) {
+        last_show_fps_time = timestamp;
+        std::cout << "当前帧率: " << m_frame_timestamp_history.size()/ ((m_frame_timestamp_history.back()-m_frame_timestamp_history.front()) * 1e-9) 
+            << " fps, size=" << frame->width << "x" << frame->height << ", 设定帧率=" << getFps()  << std::endl;
+    }
     
     // 转换为OpenCV格式
     cv::Mat full_frame;

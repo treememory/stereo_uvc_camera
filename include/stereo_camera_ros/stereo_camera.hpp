@@ -152,6 +152,7 @@ private:
     cv::Mat m_latest_right;
     uint64_t m_latest_timestamp;
     bool m_new_frame_available;
+    std::deque<uint64_t> m_frame_timestamp_history;  // 帧率历史记录
     
     // UVC回调函数
     static void uvcFrameCallback(uvc_frame_t* frame, void* ptr);

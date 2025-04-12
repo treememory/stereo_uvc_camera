@@ -1,14 +1,7 @@
 #ifndef STEREO_CAMERA_NODE_H
 #define STEREO_CAMERA_NODE_H
 
-#include <ros/ros.h>
-#include <ros/package.h>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/CameraInfo.h>
-#include <camera_info_manager/camera_info_manager.h>
-#include <image_transport/image_transport.h>
-#include <cv_bridge/cv_bridge.h>
-#include <dynamic_reconfigure/server.h>
+#include "stereo_camera_ros/ros_compat.h"
 #include <thread>
 #include <atomic>
 #include <mutex>
@@ -17,24 +10,26 @@
 
 #include "stereo_camera_ros/stereo_camera.hpp"
 
+// 使用兼容层命名空间
+using namespace ros_compat;
+
 // Frame packet structure to hold frame data and metadata
 struct FramePacket {
     cv::Mat left_image;
     cv::Mat right_image;
     uint64_t timestamp;
-    ros::Time ros_time;
+    Time ros_time;
 };
 
 class StereoCameraNode {
 public:
-    StereoCameraNode(ros::NodeHandle& nh, ros::NodeHandle& private_nh);
+    StereoCameraNode(NodePtr& main_node, NodePtr& private_node);
     ~StereoCameraNode();
 
 private:
     // Node handles
-    ros::NodeHandle nh_;
-    ros::NodeHandle private_nh_;
-    image_transport::ImageTransport it_;
+    NodePtr node_;
+    NodePtr private_node_;
     
     // Camera parameters
     int device_index_;
@@ -53,21 +48,20 @@ private:
     std::string right_image_topic_;
     
     // ROS publishers
-    image_transport::Publisher left_img_pub_;
-    image_transport::Publisher right_img_pub_;
-    ros::Publisher left_info_pub_;
-    ros::Publisher right_info_pub_;
+    ImagePublisher left_img_pub_;
+    ImagePublisher right_img_pub_;
+    Publisher<CameraInfo> left_info_pub_;
+    Publisher<CameraInfo> right_info_pub_;
     
     // Camera info managers
-    boost::shared_ptr<camera_info_manager::CameraInfoManager> left_camera_info_manager_;
-    boost::shared_ptr<camera_info_manager::CameraInfoManager> right_camera_info_manager_;
+    std::shared_ptr<CameraInfoManager> left_camera_info_manager_;
+    std::shared_ptr<CameraInfoManager> right_camera_info_manager_;
     
     // Camera
     std::unique_ptr<StereoCamera> camera_;
     
     // Status timer
-    ros::Timer timer_;
-    ros::Timer process_timer_;
+    Timer timer_;
     
     // Threading components
     std::thread processing_thread_;
@@ -82,7 +76,7 @@ private:
     std::atomic<uint64_t> processed_frames_;
     
     // Statistics
-    ros::Time last_frame_time_;
+    Time last_frame_time_;
     int frame_count_;
     double current_fps_;
     
@@ -93,7 +87,13 @@ private:
     void publishFrame(const FramePacket& packet);
     
     // Configuration and status methods
-    void timerCallback(const ros::TimerEvent& event);
+    void timerCallback();
+    
+    // Logging helper
+    void logInfo(const std::string& msg);
+    void logWarn(const std::string& msg);
+    void logError(const std::string& msg);
+    void logDebug(const std::string& msg);
 };
 
 #endif // STEREO_CAMERA_NODE_H
