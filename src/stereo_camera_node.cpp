@@ -89,6 +89,7 @@ StereoCameraNode::StereoCameraNode(NodePtr& main_node, NodePtr& private_node)
     
     logInfo("相机已成功打开");
     camera_->printDeviceInfo();
+    fps_ = camera_->getFps();
     
     // 设置帧回调函数
     camera_->setFrameCallback(

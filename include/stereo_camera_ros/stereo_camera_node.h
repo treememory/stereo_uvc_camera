@@ -18,7 +18,8 @@ struct FramePacket {
     cv::Mat left_image;
     cv::Mat right_image;
     uint64_t timestamp;
-    Time ros_time;
+    Time capture_time;
+    Time receive_time;
 };
 
 class StereoCameraNode {
@@ -74,6 +75,8 @@ private:
     // Performance metrics
     std::atomic<uint64_t> dropped_frames_;
     std::atomic<uint64_t> processed_frames_;
+
+    std::map<uint64_t, std::pair<uint64_t, uint64_t>> frame_timestamp_history_;
     
     // Statistics
     Time last_frame_time_;

@@ -9,36 +9,20 @@ void StereoCameraNode::frameCallback(const cv::Mat& left, const cv::Mat& right, 
         return;
     }
     
-    // 更新FPS统计信息
-#ifdef USE_ROS2
-    if (last_frame_time_.seconds() != 0) {
-        double dt = (ros_stamp.seconds() - last_frame_time_.seconds());
-#else
-    if (last_frame_time_ != Time(0)) {
-        double dt = (ros_stamp - last_frame_time_).toSec();
-#endif
-        frame_count_++;
-        if (dt >= 1.0) {
-            current_fps_ = frame_count_ / dt;
-            frame_count_ = 0;
-            last_frame_time_ = ros_stamp;
-        }
-    } else {
-        last_frame_time_ = ros_stamp;
-        frame_count_ = 1;
-    }
-    
     // 创建帧数据包，包含图像的深拷贝
     FramePacket packet;
     try {
         if (!left.empty() && !right.empty()) {
-            left.copyTo(packet.left_image);
-            right.copyTo(packet.right_image);
+            // left.copyTo(packet.left_image);
+            // right.copyTo(packet.right_image);
+            packet.left_image = left;
+            packet.right_image = right;
             packet.timestamp = timestamp;
             // 将纳秒时间戳转换为Time
             uint32_t sec = timestamp / 1000000000ULL;
             uint32_t nsec = timestamp % 1000000000ULL;
-            packet.ros_time = Time(sec, nsec);
+            packet.capture_time = Time(sec, nsec);
+            packet.receive_time = now();
         } else {
             logError("无法复制图像：左图像为空=" + std::string(left.empty() ? "是" : "否") + 
                      ", 右图像为空=" + std::string(right.empty() ? "是" : "否"));
@@ -134,9 +118,9 @@ void StereoCameraNode::publishFrame(const FramePacket& packet) {
     }
     
     // 设置时间戳和帧ID
-    left_info->header.stamp = packet.ros_time;
+    left_info->header.stamp = packet.capture_time;
     left_info->header.frame_id = left_frame_id_;
-    right_info->header.stamp = packet.ros_time;
+    right_info->header.stamp = packet.capture_time;
     right_info->header.frame_id = right_frame_id_;
     
     // 处理并发布左相机图像和信息
@@ -145,7 +129,7 @@ void StereoCameraNode::publishFrame(const FramePacket& packet) {
         cv_bridge::CvImage left_img_bridge;
         left_img_bridge.encoding = "bgr8";
         left_img_bridge.image = packet.left_image;
-        left_img_bridge.header.stamp = packet.ros_time;
+        left_img_bridge.header.stamp = packet.capture_time;
         left_img_bridge.header.frame_id = left_frame_id_;
         
         // 发布图像
@@ -170,7 +154,7 @@ void StereoCameraNode::publishFrame(const FramePacket& packet) {
         cv_bridge::CvImage right_img_bridge;
         right_img_bridge.encoding = "bgr8";
         right_img_bridge.image = packet.right_image;
-        right_img_bridge.header.stamp = packet.ros_time;
+        right_img_bridge.header.stamp = packet.capture_time;
         right_img_bridge.header.frame_id = right_frame_id_;
         
         // 发布图像
@@ -188,4 +172,30 @@ void StereoCameraNode::publishFrame(const FramePacket& packet) {
     } catch (const std::exception& e) {
         logError("处理右图像时异常: " + std::string(e.what()));
     }
+
+    // 统计信息：ros发布的帧率，以及近一段时间发布帧率的延迟，每一帧的延迟 now()-receive_time
+#ifdef USE_ROS2
+    frame_timestamp_history_[packet.timestamp] = {packet.receive_time.nanoseconds(), now().nanoseconds()};
+#else
+    frame_timestamp_history_[packet.timestamp] = {packet.receive_time.toNSec(), now().toNSec()};
+#endif
+    double dt = (frame_timestamp_history_.rbegin()->first - frame_timestamp_history_.begin()->first) * 1e-9;
+    if(dt>1.0){
+        current_fps_ = (frame_timestamp_history_.size()-1) / dt;
+        double sum_delay1 = 0, sum_delay2 = 0;
+        for (const auto& it : frame_timestamp_history_) {
+            sum_delay1 += (it.second.first - it.first) * 1e-9;
+            sum_delay2 += (it.second.second - it.second.first) * 1e-9;
+        }
+        double avg_delay1 = sum_delay1 / frame_timestamp_history_.size();
+        double avg_delay2 = sum_delay2 / frame_timestamp_history_.size();
+        logInfo("发布统计: 图像：[" + std::to_string(packet.left_image.cols) + "x" + std::to_string(packet.left_image.rows) + "], " +
+                " 当前帧率=" + std::to_string(current_fps_) + 
+                " fps, 设定帧率=" + std::to_string(fps_) +
+                " fps, 平均驱动延迟=" + std::to_string(avg_delay1 * 1000) + 
+                " ms, 平均发布延迟=" + std::to_string(avg_delay2 * 1000) + 
+                " ms");
+        frame_timestamp_history_.clear();
+    }
+
 }

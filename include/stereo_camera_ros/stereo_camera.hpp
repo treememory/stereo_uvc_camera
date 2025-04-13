@@ -11,6 +11,10 @@
 #include <string>
 #include <chrono>
 #include <memory>
+#include <queue>
+#include <future>
+#include <deque>
+#include <vector>
 
 /**
  * @brief 双目相机类，支持UVC协议的USB相机
@@ -54,9 +58,11 @@ public:
      * @param fps 请求的帧率
      * @param use_mjpeg 是否使用MJPEG格式
      * @param device_index 设备索引
+     * @param worker_threads 工作线程数，默认为4
      * @return 是否成功打开
      */
-    bool openWithParams(int width, int height, int fps, bool use_mjpeg = true, int device_index = 0);
+    bool openWithParams(int width, int height, int fps, bool use_mjpeg = true, 
+                       int device_index = 0, int worker_threads = 4);
     
     /**
      * @brief 关闭相机
@@ -121,6 +127,18 @@ public:
      * @param split_ratio 分割比例 (0.5表示中点分割)
      */
     void setStereoSplitRatio(float split_ratio);
+
+    /**
+     * @brief 设置丢帧阈值，当队列中帧数超过此阈值时，丢弃旧帧
+     * @param threshold 帧数阈值
+     */
+    void setFrameDropThreshold(size_t threshold);
+    
+    /**
+     * @brief 获取当前处理队列长度
+     * @return 队列长度
+     */
+    size_t getQueueLength() const;
     
 private:
     // 相机参数
@@ -143,28 +161,48 @@ private:
     // 线程控制
     std::atomic<bool> m_running;
     std::atomic<bool> m_is_opened;
-    std::mutex m_mutex;  // 通用锁
+    mutable std::mutex m_mutex;  // 通用锁
     
     // 帧缓存
-    std::mutex m_frame_mutex;
+    mutable std::mutex m_frame_mutex;
     std::condition_variable m_frame_cond;
     cv::Mat m_latest_left;
     cv::Mat m_latest_right;
     uint64_t m_latest_timestamp;
     bool m_new_frame_available;
     std::deque<uint64_t> m_frame_timestamp_history;  // 帧率历史记录
+
+    // 多线程处理队列
+    struct FrameData {
+        uvc_frame_t* frame;
+        uint64_t timestamp;
+    };
+    mutable std::mutex m_queue_mutex;
+    std::condition_variable m_queue_cond;
+    std::queue<FrameData> m_frame_queue;
+    std::vector<std::thread> m_worker_threads;
+    std::atomic<bool> m_workers_running;
+    size_t m_drop_threshold;  // 丢帧阈值
+    std::atomic<size_t> m_dropped_frames;  // 丢弃的帧数
+
+    // 预分配转换缓冲区
+    std::vector<cv::Mat> m_conversion_buffers;
+    mutable std::mutex m_buffer_mutex;
     
     // UVC回调函数
     static void uvcFrameCallback(uvc_frame_t* frame, void* ptr);
     
     // 处理帧
     void processFrame(uvc_frame_t* frame);
+
+    // 工作线程函数
+    void workerThread();
     
     // 将整帧拆分为左右眼帧
     void splitStereoFrame(const cv::Mat& stereo_frame, cv::Mat& left, cv::Mat& right) const;
     
-    // 从MJPEG解码到BGR格式
-    cv::Mat mjpegToBgr(const uint8_t* mjpeg_data, size_t mjpeg_size) const;
+    // 从MJPEG解码到BGR格式 (优化版本)
+    cv::Mat mjpegToBgr(const uint8_t* mjpeg_data, size_t mjpeg_size, cv::Mat& buffer) const;
     
     // 从YUYV转换到BGR格式
     cv::Mat yuyvToBgr(const uint8_t* yuyv_data, int width, int height) const;
@@ -175,6 +213,8 @@ private:
     // 初始化和清理
     bool initializeUVC(int device_index);
     void cleanupUVC();
+    void startWorkerThreads(int thread_count);
+    void stopWorkerThreads();
     
     // 禁用复制构造函数和赋值运算符
     StereoCamera(const StereoCamera&) = delete;

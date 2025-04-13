@@ -19,7 +19,7 @@ else()
 endif()
 
 # 配置构建类型
-set(CMAKE_BUILD_TYPE RelWithDebInfo) #RelWithDebInfo
+set(CMAKE_BUILD_TYPE Release) #RelWithDebInfo
 
 # 根据ROS版本设置编译选项
 if(${ROS_VERSION} EQUAL 1)

@@ -7,7 +7,8 @@ StereoCamera::StereoCamera()
     : m_width(1920), m_height(1080), m_fps(30), m_use_mjpeg(true), 
       m_split_ratio(0.5), m_ctx(nullptr), m_dev(nullptr), m_devh(nullptr),
       m_callback(nullptr), m_user_data(nullptr), m_running(false),
-      m_is_opened(false), m_new_frame_available(false), m_latest_timestamp(0)
+      m_is_opened(false), m_new_frame_available(false), m_latest_timestamp(0),
+      m_workers_running(false), m_drop_threshold(10), m_dropped_frames(0)
 {
 }
 
@@ -19,7 +20,7 @@ bool StereoCamera::open(int device_index) {
     return openWithParams(m_width, m_height, m_fps, m_use_mjpeg, device_index);
 }
 
-bool StereoCamera::openWithParams(int width, int height, int fps, bool use_mjpeg, int device_index) {
+bool StereoCamera::openWithParams(int width, int height, int fps, bool use_mjpeg, int device_index, int worker_threads) {
     // 防止重复打开
     if (m_is_opened) {
         std::cerr << "相机已经打开，请先关闭" << std::endl;
@@ -43,6 +44,9 @@ bool StereoCamera::openWithParams(int width, int height, int fps, bool use_mjpeg
         cleanupUVC();
         return false;
     }
+
+    // 启动工作线程
+    startWorkerThreads(worker_threads);
     
     m_is_opened = true;
     return true;
@@ -53,6 +57,9 @@ void StereoCamera::close() {
     
     m_running = false;
     
+    // 停止工作线程
+    stopWorkerThreads();
+    
     // 清理UVC资源
     cleanupUVC();
     
@@ -62,6 +69,22 @@ void StereoCamera::close() {
         m_latest_left.release();
         m_latest_right.release();
         m_new_frame_available = false;
+    }
+    
+    // 清理队列
+    {
+        std::lock_guard<std::mutex> lock(m_queue_mutex);
+        while (!m_frame_queue.empty()) {
+            auto& data = m_frame_queue.front();
+            uvc_free_frame(data.frame);
+            m_frame_queue.pop();
+        }
+    }
+    
+    // 清理转换缓冲区
+    {
+        std::lock_guard<std::mutex> lock(m_buffer_mutex);
+        m_conversion_buffers.clear();
     }
     
     m_is_opened = false;
@@ -86,6 +109,16 @@ void StereoCamera::setStereoSplitRatio(float split_ratio) {
     
     std::lock_guard<std::mutex> lock(m_mutex);
     m_split_ratio = split_ratio;
+}
+
+void StereoCamera::setFrameDropThreshold(size_t threshold) {
+    std::lock_guard<std::mutex> lock(m_queue_mutex);
+    m_drop_threshold = threshold;
+}
+
+size_t StereoCamera::getQueueLength() const {
+    std::lock_guard<std::mutex> lock(m_queue_mutex);
+    return m_frame_queue.size();
 }
 
 void StereoCamera::printDeviceInfo() const {
@@ -172,7 +205,6 @@ bool StereoCamera::getLatestFrames(cv::Mat& left, cv::Mat& right, uint64_t& time
     m_latest_right.copyTo(right);
     timestamp = m_latest_timestamp;
     
-    m_new_frame_available = false;
     return true;
 }
 
@@ -184,7 +216,6 @@ void StereoCamera::uvcFrameCallback(uvc_frame_t* frame, void* ptr) {
     }
 }
 
-uint64_t last_show_fps_time = 0;
 void StereoCamera::processFrame(uvc_frame_t* frame) {
     if (!frame || frame->data_bytes == 0) return;
     
@@ -192,60 +223,222 @@ void StereoCamera::processFrame(uvc_frame_t* frame) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     uint64_t timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+
+    // 记录帧时间戳历史，用于计算实际帧率
     m_frame_timestamp_history.push_back(timestamp);
     while(m_frame_timestamp_history.size() > 100) {
         m_frame_timestamp_history.pop_front();
     }
-    if(m_frame_timestamp_history.size() > 2 && timestamp - last_show_fps_time > 1e9) {
-        last_show_fps_time = timestamp;
-        std::cout << "当前帧率: " << m_frame_timestamp_history.size()/ ((m_frame_timestamp_history.back()-m_frame_timestamp_history.front()) * 1e-9) 
-            << " fps, size=" << frame->width << "x" << frame->height << ", 设定帧率=" << getFps()  << std::endl;
-    }
+
+    // 打印帧率信息（每秒一次）
+    // static uint64_t last_show_fps_time = 0;
+    // if(m_frame_timestamp_history.size() > 2 && timestamp - last_show_fps_time > 1e9) {
+    //     last_show_fps_time = timestamp;
+    //     double actual_duration = (m_frame_timestamp_history.back() - m_frame_timestamp_history.front()) * 1e-9;
+    //     double actual_fps = (m_frame_timestamp_history.size() - 1) / actual_duration;
+        
+    //     size_t queue_size = getQueueLength();
+    //     size_t dropped = m_dropped_frames.load();
+        
+    //     std::cout << "接收帧率: " << std::fixed << std::setprecision(1) << actual_fps
+    //         << " fps, 队列长度=" << queue_size
+    //         << ", 丢弃帧数=" << dropped
+    //         << ", 分辨率=" << frame->width << "x" << frame->height
+    //         << ", 设定帧率=" << getFps() << std::endl;
+    // }
     
-    // 转换为OpenCV格式
-    cv::Mat full_frame;
-    if (frame->frame_format == UVC_FRAME_FORMAT_MJPEG) {
-        full_frame = mjpegToBgr(static_cast<uint8_t*>(frame->data), frame->data_bytes);
-    } 
-    else if (frame->frame_format == UVC_FRAME_FORMAT_YUYV) {
-        full_frame = yuyvToBgr(static_cast<uint8_t*>(frame->data), frame->width, frame->height);
-    }
-    else {
-        std::cerr << "不支持的格式: " << frame->frame_format << std::endl;
+    // auto t0 = std::chrono::steady_clock::now();
+    // 复制一份帧数据，因为UVC回调函数返回后可能会释放原始帧
+    uvc_frame_t* frame_copy = uvc_allocate_frame(frame->data_bytes);
+    if (!frame_copy) {
+        std::cerr << "无法分配内存复制帧" << std::endl;
         return;
     }
+    // auto t1 = std::chrono::steady_clock::now();
     
-    if (full_frame.empty()) {
-        std::cerr << "帧转换失败" << std::endl;
+    uvc_error_t ret = uvc_duplicate_frame(frame, frame_copy);
+    if (ret < 0) {
+        std::cerr << "复制帧失败: " << uvc_strerror(ret) << std::endl;
+        uvc_free_frame(frame_copy);
         return;
     }
+    // auto t2 =  std::chrono::steady_clock::now();
+    // std::cout << "开辟内存耗时: " << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "us， "
+    //           << "复制帧耗时: " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << "us" << std::endl;
     
-    // 分割为左右眼图像
-    cv::Mat left_frame, right_frame;
-    splitStereoFrame(full_frame, left_frame, right_frame);
-    
-    // 更新最新帧缓存
+    // 将帧放入处理队列
     {
-        std::lock_guard<std::mutex> lock(m_frame_mutex);
-        left_frame.copyTo(m_latest_left);
-        right_frame.copyTo(m_latest_right);
-        m_latest_timestamp = timestamp;
-        m_new_frame_available = true;
+        std::lock_guard<std::mutex> lock(m_queue_mutex);
+        
+        // 如果队列过长，丢弃旧帧
+        if (m_drop_threshold > 0 && m_frame_queue.size() >= m_drop_threshold) {
+            // 丢弃最老的一帧
+            auto& old_frame = m_frame_queue.front();
+            uvc_free_frame(old_frame.frame);
+            m_frame_queue.pop();
+            m_dropped_frames++;
+        }
+        
+        // 添加新帧到队列
+        FrameData data = {frame_copy, timestamp};
+        m_frame_queue.push(data);
     }
     
-    // 通知等待的线程
-    m_frame_cond.notify_all();
+    // 通知工作线程处理新帧
+    m_queue_cond.notify_one();
+}
+
+void StereoCamera::workerThread() {
+    while (m_workers_running) {
+        // 从队列中获取一帧数据
+        FrameData data;
+        {
+            std::unique_lock<std::mutex> lock(m_queue_mutex);
+            // 等待队列中有数据或者停止信号
+            m_queue_cond.wait(lock, [this] {
+                return !m_frame_queue.empty() || !m_workers_running;
+            });
+            
+            // 检查退出条件
+            if (!m_workers_running) break;
+            if (m_frame_queue.empty()) continue;
+            
+            // 获取并移除队列头部的帧
+            data = m_frame_queue.front();
+            m_frame_queue.pop();
+        }
+        
+        auto t0 = std::chrono::steady_clock::now();
+        // 处理帧
+        uvc_frame_t* frame = data.frame;
+        uint64_t timestamp = data.timestamp;
+        
+        // 获取或分配转换缓冲区
+        cv::Mat conversion_buffer;
+        {
+            std::lock_guard<std::mutex> lock(m_buffer_mutex);
+            if (!m_conversion_buffers.empty()) {
+                conversion_buffer = m_conversion_buffers.back();
+                m_conversion_buffers.pop_back();
+            }
+        }
+        auto t1 = std::chrono::steady_clock::now();
+        
+        // 转换为OpenCV格式
+        cv::Mat full_frame;
+        if (frame->frame_format == UVC_FRAME_FORMAT_MJPEG) {
+            full_frame = mjpegToBgr(static_cast<uint8_t*>(frame->data), frame->data_bytes, conversion_buffer);
+        } 
+        else if (frame->frame_format == UVC_FRAME_FORMAT_YUYV) {
+            full_frame = yuyvToBgr(static_cast<uint8_t*>(frame->data), frame->width, frame->height);
+        }
+        else {
+            std::cerr << "不支持的格式: " << frame->frame_format << std::endl;
+            uvc_free_frame(frame);
+            return;
+        }
+        auto t2 = std::chrono::steady_clock::now();
+        
+        // 释放复制的帧
+        uvc_free_frame(frame);
+        auto t3 = std::chrono::steady_clock::now();
+        
+        // 归还转换缓冲区
+        if (!conversion_buffer.empty()) {
+            std::lock_guard<std::mutex> lock(m_buffer_mutex);
+            m_conversion_buffers.push_back(conversion_buffer);
+        }
+        
+        if (full_frame.empty()) {
+            std::cerr << "帧转换失败" << std::endl;
+            continue;
+        }
+        
+        // 分割为左右眼图像
+        cv::Mat left_frame, right_frame;
+        splitStereoFrame(full_frame, left_frame, right_frame);
+        auto t4 = std::chrono::steady_clock::now();
+        
+        // 更新最新帧缓存
+        {
+            std::lock_guard<std::mutex> lock(m_frame_mutex);
+            // left_frame.copyTo(m_latest_left);
+            // right_frame.copyTo(m_latest_right);
+            m_latest_left = left_frame;
+            m_latest_right = right_frame;
+            m_latest_timestamp = timestamp;
+            m_new_frame_available = true;
+        }
+        
+        // 通知等待的线程
+        m_frame_cond.notify_all();
+        
+        // 调用用户回调
+        FrameCallback callback;
+        void* user_data;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            callback = m_callback;
+            user_data = m_user_data;
+        }
+        auto t5 = std::chrono::steady_clock::now();
+        
+        if (callback) {
+            try {
+                callback(left_frame, right_frame, timestamp, user_data);
+            } catch (const std::exception& e) {
+                std::cerr << "回调函数异常: " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "回调函数未知异常" << std::endl;
+            }
+        }
+        auto t6 = std::chrono::steady_clock::now();
+        // std::cout << "处理帧耗时: " << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "us, "
+        //           << "转换耗时: " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << "us, "
+        //           << "释放帧耗时: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() << "us, "
+        //           << "分割耗时: " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << "us, "
+        //           << "回调耗时: " << std::chrono::duration_cast<std::chrono::microseconds>(t6 - t5).count() << "us, " 
+        //           << "总耗时： " << std::chrono::duration_cast<std::chrono::microseconds>(t6 - t0).count() << "us"
+        //           << std::endl;
+    }
+}
+
+void StereoCamera::startWorkerThreads(int thread_count) {
+    stopWorkerThreads();  // 确保之前的线程已经停止
     
-    // 调用用户回调
-    if (m_callback) {
-        try {
-            m_callback(left_frame, right_frame, timestamp, m_user_data);
-        } catch (const std::exception& e) {
-            std::cerr << "回调函数异常: " << e.what() << std::endl;
-        } catch (...) {
-            std::cerr << "回调函数未知异常" << std::endl;
+    // 预分配转换缓冲区
+    {
+        std::lock_guard<std::mutex> lock(m_buffer_mutex);
+        m_conversion_buffers.resize(thread_count);
+    }
+    
+    m_dropped_frames = 0;
+    m_workers_running = true;
+    
+    // 创建工作线程
+    for (int i = 0; i < thread_count; ++i) {
+        m_worker_threads.emplace_back(&StereoCamera::workerThread, this);
+    }
+    
+    std::cout << "启动 " << thread_count << " 个工作线程" << std::endl;
+}
+
+void StereoCamera::stopWorkerThreads() {
+    if (!m_workers_running) return;
+    
+    // 停止工作线程
+    m_workers_running = false;
+    m_queue_cond.notify_all();
+    
+    // 等待所有线程结束
+    for (auto& thread : m_worker_threads) {
+        if (thread.joinable()) {
+            thread.join();
         }
     }
+    
+    m_worker_threads.clear();
+    std::cout << "已停止所有工作线程" << std::endl;
 }
 
 void StereoCamera::splitStereoFrame(const cv::Mat& stereo_frame, cv::Mat& left, cv::Mat& right) const {
@@ -258,16 +451,26 @@ void StereoCamera::splitStereoFrame(const cv::Mat& stereo_frame, cv::Mat& left, 
     cv::Rect right_roi(split_point, 0, stereo_frame.cols - split_point, stereo_frame.rows);
     
     // 将ROI区域复制到输出图像
-    stereo_frame(left_roi).copyTo(left);
-    stereo_frame(right_roi).copyTo(right);
+    // stereo_frame(left_roi).copyTo(left);
+    // stereo_frame(right_roi).copyTo(right);
+    left = stereo_frame(left_roi);
+    right = stereo_frame(right_roi);
 }
 
-cv::Mat StereoCamera::mjpegToBgr(const uint8_t* mjpeg_data, size_t mjpeg_size) const {
+cv::Mat StereoCamera::mjpegToBgr(const uint8_t* mjpeg_data, size_t mjpeg_size, cv::Mat& buffer) const {
     try {
         // 解码JPEG数据
         cv::Mat jpeg_data(1, mjpeg_size, CV_8UC1, const_cast<uint8_t*>(mjpeg_data));
-        cv::Mat bgr = cv::imdecode(jpeg_data, cv::IMREAD_COLOR);
-        return bgr;
+
+        // 使用预分配的缓冲区（如果有）
+        if (!buffer.empty()) {
+            // 尝试直接解码到预分配缓冲区
+            cv::imdecode(jpeg_data, cv::IMREAD_COLOR, &buffer);
+            return buffer;
+        }
+
+        // 否则创建新的Mat
+        return cv::imdecode(jpeg_data, cv::IMREAD_COLOR);
     } catch (const cv::Exception& e) {
         std::cerr << "OpenCV错误: " << e.what() << std::endl;
         return cv::Mat();
