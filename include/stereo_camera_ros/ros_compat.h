@@ -2,17 +2,17 @@
 #define ROS_COMPAT_H
 
 /* 
- * 该头文件提供ROS1和ROS2之间的兼容层
- * 通过命名空间别名和包装函数解决两个版本API的差异
+ * This header file provides a compatibility layer between ROS1 and ROS2
+ * Resolves differences between the two versions' APIs through namespace aliases and wrapper functions
  */
 
-// 检测ROS版本
+// Detect ROS version
 #if defined(AMENT_CMAKE) || defined(USING_ROS2)
     #define USE_ROS2
 #endif
 
 #ifdef USE_ROS2
-    // ROS2头文件
+    // ROS2 headers
     #include <rclcpp/rclcpp.hpp>
     #include <ament_index_cpp/get_package_share_directory.hpp>
     #include <sensor_msgs/msg/image.hpp>
@@ -22,7 +22,7 @@
     #include <cv_bridge/cv_bridge.h>
     #include <std_msgs/msg/header.hpp>
 #else
-    // ROS1头文件
+    // ROS1 headers
     #include <ros/ros.h>
     #include <ros/package.h>
     #include <sensor_msgs/Image.h>
@@ -34,7 +34,7 @@
 
 namespace ros_compat {
 
-// 基本类型定义
+// Basic type definitions
 #ifdef USE_ROS2
     using Clock = rclcpp::Clock;
     using Logger = rclcpp::Logger;
@@ -45,8 +45,8 @@ namespace ros_compat {
     using Timer = rclcpp::TimerBase::SharedPtr;
     namespace msg = sensor_msgs::msg;
 #else
-    using Clock = ros::Time;  // ROS1没有独立的Clock类，用Time代替
-    using Logger = std::string;  // ROS1使用字符串作为日志类别
+    using Clock = ros::Time;  // ROS1 doesn't have a separate Clock class, using Time instead
+    using Logger = std::string;  // ROS1 uses string as log category
     using Node = ros::NodeHandle;
     using NodePtr = ros::NodeHandle;
     using Time = ros::Time;
@@ -55,7 +55,7 @@ namespace ros_compat {
     namespace msg = sensor_msgs;
 #endif
 
-// 消息类型定义
+// Message type definitions
 #ifdef USE_ROS2
     using CameraInfo = sensor_msgs::msg::CameraInfo;
     using CameraInfoPtr = std::shared_ptr<CameraInfo>;
@@ -70,10 +70,10 @@ namespace ros_compat {
     using Header = std_msgs::Header;
 #endif
 
-// 工具类定义
+// Utility class definitions
 using CameraInfoManager = camera_info_manager::CameraInfoManager;
 
-// 统一的发布者类
+// Unified publisher class
 #ifdef USE_ROS2
     template<typename T>
     using Publisher = typename rclcpp::Publisher<T>::SharedPtr;
@@ -82,14 +82,14 @@ using CameraInfoManager = camera_info_manager::CameraInfoManager;
     using Publisher = ros::Publisher;
 #endif
 
-// 图像传输发布者
+// Image transport publisher
 #ifdef USE_ROS2
     using ImagePublisher = Publisher<sensor_msgs::msg::Image>;
 #else
     using ImagePublisher = image_transport::Publisher;
 #endif
 
-// 初始化函数
+// Initialization function
 inline void init(int argc, char** argv, const std::string& node_name) {
 #ifdef USE_ROS2
     rclcpp::init(argc, argv);
@@ -98,7 +98,7 @@ inline void init(int argc, char** argv, const std::string& node_name) {
 #endif
 }
 
-// 关闭函数
+// Shutdown function
 inline void shutdown() {
 #ifdef USE_ROS2
     rclcpp::shutdown();
@@ -107,7 +107,7 @@ inline void shutdown() {
 #endif
 }
 
-// 消息循环 - 使用命名空间限定明确区分ROS1和ROS2的版本，避免冲突
+// Message loop - using namespace qualification to clearly distinguish between ROS1 and ROS2 versions, avoiding conflicts
 #ifdef USE_ROS2
 inline void ros_spin(NodePtr node) {
     rclcpp::spin(node);
@@ -118,7 +118,7 @@ inline void ros_spin() {
 }
 #endif
 
-// 创建节点
+// Create node
 #ifdef USE_ROS2
 inline NodePtr create_node(const std::string& name, const std::string& ns = "") {
     if (ns.empty()) {
@@ -137,7 +137,7 @@ inline NodePtr create_node(const std::string& name, const std::string& ns = "") 
 }
 #endif
 
-// 获取当前时间
+// Get current time
 inline Time now() {
 #ifdef USE_ROS2
     return rclcpp::Clock().now();
@@ -146,7 +146,7 @@ inline Time now() {
 #endif
 }
 
-// 日志函数
+// Log functions
 #ifdef USE_ROS2
 inline void log_info(const NodePtr& node, const std::string& message) {
     RCLCPP_INFO(node->get_logger(), "%s", message.c_str());
@@ -181,7 +181,7 @@ inline void log_debug(const NodePtr&, const std::string& message) {
 }
 #endif
 
-// 创建发布者
+// Create publisher
 #ifdef USE_ROS2
 template<typename T>
 inline Publisher<T> create_publisher(NodePtr node, const std::string& topic, int queue_size) {
@@ -194,7 +194,7 @@ inline Publisher<T> create_publisher(NodePtr& node, const std::string& topic, in
 }
 #endif
 
-// 创建图像发布者
+// Create image publisher
 #ifdef USE_ROS2
 inline ImagePublisher create_image_publisher(NodePtr node, const std::string& topic, int queue_size) {
     return node->create_publisher<sensor_msgs::msg::Image>(topic, queue_size);
@@ -206,20 +206,20 @@ inline ImagePublisher create_image_publisher(NodePtr& node, const std::string& t
 }
 #endif
 
-// 发布消息
+// Publish message
 #ifdef USE_ROS2
 template<typename T>
 inline void publish(const Publisher<T>& pub, T& msg) {
     pub->publish(msg);
 }
 #else
-template<typename T>
-inline void publish(const Publisher<T>& pub, const std::shared_ptr<T>& msg) {
+template<typename T1, typename T2>
+inline void publish(const T1& pub, const T2& msg) {
     pub.publish(msg);
 }
 #endif
 
-// 获取参数
+// Get parameter
 #ifdef USE_ROS2
 template<typename T>
 inline bool get_param(NodePtr node, const std::string& name, T& value) {
@@ -241,7 +241,7 @@ inline bool get_param(NodePtr& node, const std::string& name, T& value) {
 }
 #endif
 
-// 创建定时器
+// Create timer
 #ifdef USE_ROS2
 inline Timer create_wall_timer(
     NodePtr node,
@@ -272,7 +272,7 @@ inline Timer create_wall_timer(
 }
 #endif
 
-// 获取包路径
+// Get package path
 inline std::string get_package_share_directory(const std::string& package_name) {
 #ifdef USE_ROS2
     return ament_index_cpp::get_package_share_directory(package_name);
@@ -281,7 +281,7 @@ inline std::string get_package_share_directory(const std::string& package_name) 
 #endif
 }
 
-// 获取相机管理器所需的节点指针
+// Get camera manager node pointer
 #ifdef USE_ROS2
 inline rclcpp::Node* get_camera_info_node(NodePtr node) {
     return node.get();

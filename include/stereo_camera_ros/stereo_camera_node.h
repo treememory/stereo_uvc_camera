@@ -10,7 +10,6 @@
 
 #include "stereo_camera_ros/stereo_camera.hpp"
 
-// 使用兼容层命名空间
 using namespace ros_compat;
 
 // Frame packet structure to hold frame data and metadata

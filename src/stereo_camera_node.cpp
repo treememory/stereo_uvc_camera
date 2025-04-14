@@ -6,7 +6,7 @@ StereoCameraNode::StereoCameraNode(NodePtr& main_node, NodePtr& private_node)
       running_(false), processing_thread_active_(false),
       dropped_frames_(0), processed_frames_(0) {
     
-    // 加载参数
+    // Load parameters
     device_index_ = 0;
     width_ = 3840;
     height_ = 1080;
@@ -37,23 +37,23 @@ StereoCameraNode::StereoCameraNode(NodePtr& main_node, NodePtr& private_node)
     get_param(private_node_, "left_image_topic", left_image_topic_);
     get_param(private_node_, "right_image_topic", right_image_topic_);
     
-    // 获取包路径用于标定文件
+    // Get package path for calibration files
     std::string pkg_path = get_package_share_directory("stereo_camera_ros");
     std::string left_calib_path = "file://" + pkg_path + "/config/left_camera.yaml";
     std::string right_calib_path = "file://" + pkg_path + "/config/right_camera.yaml";
     
-    // 如果未指定相机信息URL，则使用默认值
+    // If camera info URL is not specified, use default values
     if (left_camera_info_url_.empty()) {
         left_camera_info_url_ = left_calib_path;
-        logInfo("使用左相机标定文件: " + left_camera_info_url_);
+        logInfo("Using left camera calibration file: " + left_camera_info_url_);
     }
     
     if (right_camera_info_url_.empty()) {
         right_camera_info_url_ = right_calib_path;
-        logInfo("使用右相机标定文件: " + right_camera_info_url_);
+        logInfo("Using right camera calibration file: " + right_camera_info_url_);
     }
     
-    // 初始化相机信息管理器
+    // Initialize camera info managers
     auto left_camera_node = get_camera_info_node(node_);
     auto right_camera_node = get_camera_info_node(node_);
     
@@ -62,73 +62,73 @@ StereoCameraNode::StereoCameraNode(NodePtr& main_node, NodePtr& private_node)
     right_camera_info_manager_ = std::make_shared<CameraInfoManager>(
         right_camera_node, right_camera_name_, right_camera_info_url_);
         
-    // 设置图像发布者
+    // Set image publishers
     left_img_pub_ = create_image_publisher(node_, left_image_topic_, 1);
     right_img_pub_ = create_image_publisher(node_, right_image_topic_, 1);
     
-    // 设置相机信息发布者
+    // Set camera info publishers
     left_info_pub_ = create_publisher<CameraInfo>(node_, "camera_info/left", 1);
     right_info_pub_ = create_publisher<CameraInfo>(node_, "camera_info/right", 1);
     
-    // 初始化相机
+    // Initialize camera
     camera_.reset(new StereoCamera());
     camera_->setStereoSplitRatio(split_ratio_);
     
-    // 打开相机
-    logInfo("打开相机，参数：width=" + std::to_string(width_) + 
+    // Open camera
+    logInfo("Opening camera, parameters: width=" + std::to_string(width_) + 
             ", height=" + std::to_string(height_) + 
             ", fps=" + std::to_string(fps_) + 
             ", mjpeg=" + (use_mjpeg_ ? "true" : "false") + 
             ", device_index=" + std::to_string(device_index_));
     
     if (!camera_->openWithParams(width_, height_, fps_, use_mjpeg_, device_index_)) {
-        logError("无法打开相机！");
+        logError("Cannot open camera!");
         shutdown();
         return;
     }
     
-    logInfo("相机已成功打开");
+    logInfo("Camera successfully opened");
     camera_->printDeviceInfo();
     fps_ = camera_->getFps();
     
-    // 设置帧回调函数
+    // Set frame callback function
     camera_->setFrameCallback(
         std::bind(&StereoCameraNode::frameCallback, this, 
                   std::placeholders::_1, std::placeholders::_2, 
                   std::placeholders::_3, std::placeholders::_4),
         this);
     
-    // 创建用于检查相机状态的定时器
+    // Create timer for checking camera status
     auto timer_callback = std::bind(&StereoCameraNode::timerCallback, this);
     timer_ = create_wall_timer(node_, Duration(1.0, 0.0), timer_callback);
     
-    logInfo("双目相机节点已初始化");
+    logInfo("Stereo camera node initialized");
 }
 
 StereoCameraNode::~StereoCameraNode() {
-    // 停止处理线程
+    // Stop processing thread
     running_ = false;
     frame_condition_.notify_all();
     
-    // 等待处理线程结束
+    // Wait for processing thread to end
     if (processing_thread_.joinable()) {
         processing_thread_.join();
     }
     
-    // 关闭相机
+    // Close camera
     if (camera_) {
         camera_->close();
     }
     
-    logInfo("双目相机节点已关闭. 统计: 已处理 " + std::to_string(processed_frames_.load()) + 
-            " 帧, 丢弃 " + std::to_string(dropped_frames_.load()) + " 帧");
+    logInfo("Stereo camera node closed. Statistics: Processed " + std::to_string(processed_frames_.load()) + 
+            " frames, Dropped " + std::to_string(dropped_frames_.load()) + " frames");
 }
 
 void StereoCameraNode::timerCallback() {
     if (camera_ && camera_->isOpened()) {
-        logDebug("相机运行中，FPS: " + std::to_string(current_fps_));
+        logDebug("Camera running, FPS: " + std::to_string(current_fps_));
     } else {
-        logWarn("相机未打开！");
+        logWarn("Camera not open!");
     }
 }
 
@@ -152,12 +152,12 @@ void StereoCameraNode::logDebug(const std::string& msg) {
 int main(int argc, char** argv) {
     init(argc, argv, "stereo_camera_node");
     auto node = create_node("stereo_camera_node");
-    // 在ROS2中，private节点命名不能用~，我们使用正确的命名方式
+    // In ROS2, private node naming can't use ~, we use the correct naming method
     auto private_node = create_node("stereo_camera_node_private");
     
     auto camera_node = std::make_shared<StereoCameraNode>(node, private_node);
     
-    ros_spin(node);  // 使用ros_spin替代spin避免冲突
+    ros_spin(node);  // Use ros_spin instead of spin to avoid conflicts
     
     return 0;
 }
@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
     
     StereoCameraNode camera_node(node, private_node);
     
-    ros_spin();  // 使用ros_spin替代spin避免冲突
+    ros_spin();  // Use ros_spin instead of spin to avoid conflicts
     
     return 0;
 }

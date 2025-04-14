@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10.0)
 project(stereo_camera_ros)
 
-# 确定ROS版本
+# Determine ROS version
 if(DEFINED ENV{ROS_VERSION})
   set(ROS_VERSION $ENV{ROS_VERSION})
   message(STATUS "Using ROS_VERSION=$ENV{ROS_VERSION} from environment")
@@ -13,19 +13,19 @@ elseif(DEFINED ENV{ROS_DISTRO})
   endif()
   message(STATUS "Detected ROS_VERSION=${ROS_VERSION} from ROS_DISTRO=$ENV{ROS_DISTRO}")
 else()
-  # 默认使用 No Ros
+  # Default to No ROS
   set(ROS_VERSION 0)
   message(STATUS "No ROS_VERSION or ROS_DISTRO set; defaulting to ROS_VERSION=0")
 endif()
 
-# 配置构建类型
+# Configure build type
 set(CMAKE_BUILD_TYPE Release) #RelWithDebInfo
 
-# 根据ROS版本设置编译选项
+# Set compiler options based on ROS version
 if(${ROS_VERSION} EQUAL 1)
   message(STATUS "Building for ROS1")
   
-  # ROS1构建设置
+  # ROS1 build settings
   find_package(catkin REQUIRED COMPONENTS
     roscpp
     sensor_msgs
@@ -36,12 +36,12 @@ if(${ROS_VERSION} EQUAL 1)
     dynamic_reconfigure
   )
 
-  # 系统依赖
+  # System dependencies
   find_package(OpenCV REQUIRED)
   find_package(JPEG REQUIRED)
   find_package(Threads REQUIRED)
 
-  # Catkin特定配置
+  # Catkin specific configuration
   catkin_package(
     INCLUDE_DIRS include
     LIBRARIES stereo_camera_ros
@@ -49,7 +49,7 @@ if(${ROS_VERSION} EQUAL 1)
     DEPENDS OpenCV
   )
 
-  # 包含目录
+  # Include directories
   include_directories(
     include
     ${catkin_INCLUDE_DIRS}
@@ -57,7 +57,7 @@ if(${ROS_VERSION} EQUAL 1)
     ${JPEG_INCLUDE_DIR}
   )
 
-  # 添加stereo_camera库
+  # Add stereo_camera library
   add_library(stereo_camera
     src/stereo_camera.cpp
   )
@@ -67,10 +67,10 @@ if(${ROS_VERSION} EQUAL 1)
     ${CMAKE_THREAD_LIBS_INIT}
     ${JPEG_LIBRARIES}
     uvc
-    usb-1.0  # 添加明确的libusb依赖并调整顺序
+    usb-1.0  # Add explicit libusb dependency and adjust order
   )
 
-  # 添加ROS包装节点
+  # Add ROS wrapper node
   add_executable(stereo_camera_node 
     src/stereo_camera_node.cpp
     src/frame_processor.cpp
@@ -81,11 +81,11 @@ if(${ROS_VERSION} EQUAL 1)
     ${catkin_LIBRARIES}
   )
 
-  # 双目相机演示程序
+  # Stereo camera demo program
   add_executable(stereo_camera_demo src/stereo_camera_demo.cpp)
   target_link_libraries(stereo_camera_demo stereo_camera ${OpenCV_LIBS} ${CMAKE_THREAD_LIBS_INIT})
 
-  # 安装规则
+  # Installation rules
   install(TARGETS stereo_camera stereo_camera_node stereo_camera_demo
     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
@@ -107,12 +107,12 @@ if(${ROS_VERSION} EQUAL 1)
 elseif(${ROS_VERSION} EQUAL 2)
   message(STATUS "Building for ROS2")
   
-  # 设置C++标准
+  # Set C++ standard
   if(NOT CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 14)
   endif()
   
-  # ROS2构建设置
+  # ROS2 build settings
   find_package(ament_cmake REQUIRED)
   find_package(rclcpp REQUIRED)
   find_package(sensor_msgs REQUIRED)
@@ -125,17 +125,17 @@ elseif(${ROS_VERSION} EQUAL 2)
   find_package(Threads REQUIRED)
   find_package(ament_index_cpp REQUIRED)
 
-  # 定义ROS2编译标志
+  # Define ROS2 compilation flags
   add_definitions(-DUSING_ROS2)
 
-  # 包含目录
+  # Include directories
   include_directories(
     include
     ${OpenCV_INCLUDE_DIRS}
     ${JPEG_INCLUDE_DIR}
   )
 
-  # 添加stereo_camera库
+  # Add stereo_camera library
   add_library(stereo_camera
     src/stereo_camera.cpp
   )
@@ -145,10 +145,10 @@ elseif(${ROS_VERSION} EQUAL 2)
     ${CMAKE_THREAD_LIBS_INIT}
     ${JPEG_LIBRARIES}
     uvc
-    usb-1.0  # 添加明确的libusb依赖并调整顺序
+    usb-1.0  # Add explicit libusb dependency and adjust order
   )
 
-  # 添加ROS2包装节点
+  # Add ROS2 wrapper node
   add_executable(stereo_camera_node 
     src/stereo_camera_node.cpp
     src/frame_processor.cpp
@@ -167,11 +167,11 @@ elseif(${ROS_VERSION} EQUAL 2)
     ament_index_cpp
   )
 
-  # 双目相机演示程序
+  # Stereo camera demo program
   add_executable(stereo_camera_demo src/stereo_camera_demo.cpp)
   target_link_libraries(stereo_camera_demo stereo_camera ${OpenCV_LIBS} ${CMAKE_THREAD_LIBS_INIT})
 
-  # 安装规则
+  # Installation rules
   install(TARGETS 
     stereo_camera 
     stereo_camera_node 
@@ -193,7 +193,7 @@ elseif(${ROS_VERSION} EQUAL 2)
     DESTINATION share/${PROJECT_NAME}/config
   )
 
-  # 导出依赖
+  # Export dependencies
   ament_export_include_directories(include)
   ament_export_libraries(stereo_camera)
   ament_export_dependencies(
@@ -208,19 +208,19 @@ elseif(${ROS_VERSION} EQUAL 2)
 
   ament_package()
 else()
-  # 系统依赖
+  # System dependencies
   find_package(OpenCV REQUIRED)
   find_package(JPEG REQUIRED)
   find_package(Threads REQUIRED)
 
-  # 包含目录
+  # Include directories
   include_directories(
     include
     ${OpenCV_INCLUDE_DIRS}
     ${JPEG_INCLUDE_DIR}
   )
 
-  # 添加stereo_camera库
+  # Add stereo_camera library
   add_library(stereo_camera
     src/stereo_camera.cpp
   )

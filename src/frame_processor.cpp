@@ -3,13 +3,13 @@
 void StereoCameraNode::frameCallback(const cv::Mat& left, const cv::Mat& right, uint64_t timestamp, void* user_data) {
     Time ros_stamp = now();
     
-    // 检查图像是否有效
+    // Check if images are valid
     if (left.empty() || right.empty()) {
-        logWarn("接收到空图像帧");
+        logWarn("Received empty image frame");
         return;
     }
     
-    // 创建帧数据包，包含图像的深拷贝
+    // Create frame packet, containing deep copies of images
     FramePacket packet;
     try {
         if (!left.empty() && !right.empty()) {
@@ -18,39 +18,39 @@ void StereoCameraNode::frameCallback(const cv::Mat& left, const cv::Mat& right, 
             packet.left_image = left;
             packet.right_image = right;
             packet.timestamp = timestamp;
-            // 将纳秒时间戳转换为Time
+            // Convert nanosecond timestamp to Time
             uint32_t sec = timestamp / 1000000000ULL;
             uint32_t nsec = timestamp % 1000000000ULL;
             packet.capture_time = Time(sec, nsec);
             packet.receive_time = now();
         } else {
-            logError("无法复制图像：左图像为空=" + std::string(left.empty() ? "是" : "否") + 
-                     ", 右图像为空=" + std::string(right.empty() ? "是" : "否"));
+            logError("Unable to copy images: left image empty=" + std::string(left.empty() ? "yes" : "no") + 
+                     ", right image empty=" + std::string(right.empty() ? "yes" : "no"));
             return;
         }
     } catch (const cv::Exception& e) {
-        logError("OpenCV异常（复制图像）: " + std::string(e.what()));
+        logError("OpenCV exception (copying images): " + std::string(e.what()));
         return;
     }
     
-    // 添加帧到缓冲区
+    // Add frame to buffer
     {
         std::lock_guard<std::mutex> lock(frame_mutex_);
         
-        // 如果缓冲区已满，丢弃最旧的帧
+        // If buffer is full, discard oldest frame
         if (frame_buffer_.full()) {
             dropped_frames_++;
             frame_buffer_.pop_front();
         }
         
-        // 添加新帧
+        // Add new frame
         frame_buffer_.push_back(std::move(packet));
     }
     
-    // 通知处理线程
+    // Notify processing thread
     frame_condition_.notify_one();
     
-    // 如果处理线程未运行，则启动它
+    // If processing thread is not running, start it
     if (!processing_thread_active_) {
         startProcessingThread();
     }
@@ -65,23 +65,23 @@ void StereoCameraNode::startProcessingThread() {
 }
 
 void StereoCameraNode::processFrames() {
-    logInfo("帧处理线程已启动");
+    logInfo("Frame processing thread started");
     
     while (running_) {
         FramePacket packet;
         bool has_frame = false;
         
-        // 从缓冲区获取下一帧
+        // Get next frame from buffer
         {
             std::unique_lock<std::mutex> lock(frame_mutex_);
             
-            // 等待帧或直到关闭
+            // Wait for frame or until shutdown
             if (frame_buffer_.empty()) {
                 frame_condition_.wait_for(lock, std::chrono::milliseconds(100), 
                                         [this]() { return !frame_buffer_.empty() || !running_; });
             }
             
-            // 检查是否有帧可处理
+            // Check if there's a frame to process
             if (!frame_buffer_.empty() && running_) {
                 packet = std::move(frame_buffer_.front());
                 frame_buffer_.pop_front();
@@ -89,7 +89,7 @@ void StereoCameraNode::processFrames() {
             }
         }
         
-        // 如果有帧且仍在运行，则处理帧
+        // If there's a frame and still running, process it
         if (has_frame && running_) {
             publishFrame(packet);
             processed_frames_++;
@@ -97,83 +97,83 @@ void StereoCameraNode::processFrames() {
     }
     
     processing_thread_active_ = false;
-    logInfo("帧处理线程已停止");
+    logInfo("Frame processing thread stopped");
 }
 
 void StereoCameraNode::publishFrame(const FramePacket& packet) {
-    // 检查图像有效性
+    // Check image validity
     if (packet.left_image.empty() || packet.right_image.empty()) {
-        logWarn("发布帧时收到空图像");
+        logWarn("Received empty image when publishing frame");
         return;
     }
     
-    // 获取相机信息
+    // Get camera info
     CameraInfoPtr left_info, right_info;
     try {
         left_info.reset(new CameraInfo(left_camera_info_manager_->getCameraInfo()));
         right_info.reset(new CameraInfo(right_camera_info_manager_->getCameraInfo()));
     } catch (const std::exception& e) {
-        logError("获取相机信息时发生错误: " + std::string(e.what()));
+        logError("Error getting camera info: " + std::string(e.what()));
         return;
     }
     
-    // 设置时间戳和帧ID
+    // Set timestamp and frame ID
     left_info->header.stamp = packet.capture_time;
     left_info->header.frame_id = left_frame_id_;
     right_info->header.stamp = packet.capture_time;
     right_info->header.frame_id = right_frame_id_;
     
-    // 处理并发布左相机图像和信息
+    // Process and publish left camera image and info
     try {
-        // 将OpenCV图像转换为ROS消息
+        // Convert OpenCV image to ROS message
         cv_bridge::CvImage left_img_bridge;
         left_img_bridge.encoding = "bgr8";
         left_img_bridge.image = packet.left_image;
         left_img_bridge.header.stamp = packet.capture_time;
         left_img_bridge.header.frame_id = left_frame_id_;
         
-        // 发布图像
+        // Publish image
         try {
             ImagePtr left_img_msg = left_img_bridge.toImageMsg();
             publish(left_img_pub_, *left_img_msg);
         } catch (const std::exception& e) {
-            logError("发布左图像时异常: " + std::string(e.what()));
+            logError("Exception publishing left image: " + std::string(e.what()));
         }
         
-        // 发布相机信息
+        // Publish camera info
         publish(left_info_pub_, *left_info);
     } catch (const cv::Exception& e) {
-        logError("处理左图像时OpenCV异常: " + std::string(e.what()));
+        logError("OpenCV exception processing left image: " + std::string(e.what()));
     } catch (const std::exception& e) {
-        logError("处理左图像时异常: " + std::string(e.what()));
+        logError("Exception processing left image: " + std::string(e.what()));
     }
     
-    // 处理并发布右相机图像和信息
+    // Process and publish right camera image and info
     try {
-        // 将OpenCV图像转换为ROS消息
+        // Convert OpenCV image to ROS message
         cv_bridge::CvImage right_img_bridge;
         right_img_bridge.encoding = "bgr8";
         right_img_bridge.image = packet.right_image;
         right_img_bridge.header.stamp = packet.capture_time;
         right_img_bridge.header.frame_id = right_frame_id_;
         
-        // 发布图像
+        // Publish image
         try {
             ImagePtr right_img_msg = right_img_bridge.toImageMsg();
             publish(right_img_pub_, *right_img_msg);
         } catch (const std::exception& e) {
-            logError("发布右图像时异常: " + std::string(e.what()));
+            logError("Exception publishing right image: " + std::string(e.what()));
         }
         
-        // 发布相机信息
+        // Publish camera info
         publish(right_info_pub_, *right_info);
     } catch (const cv::Exception& e) {
-        logError("处理右图像时OpenCV异常: " + std::string(e.what()));
+        logError("OpenCV exception processing right image: " + std::string(e.what()));
     } catch (const std::exception& e) {
-        logError("处理右图像时异常: " + std::string(e.what()));
+        logError("Exception processing right image: " + std::string(e.what()));
     }
 
-    // 统计信息：ros发布的帧率，以及近一段时间发布帧率的延迟，每一帧的延迟 now()-receive_time
+    // Statistics: ROS publishing frame rate, recent publishing delay, and delay for each frame now()-receive_time
 #ifdef USE_ROS2
     frame_timestamp_history_[packet.timestamp] = {packet.receive_time.nanoseconds(), now().nanoseconds()};
 #else
@@ -189,11 +189,11 @@ void StereoCameraNode::publishFrame(const FramePacket& packet) {
         }
         double avg_delay1 = sum_delay1 / frame_timestamp_history_.size();
         double avg_delay2 = sum_delay2 / frame_timestamp_history_.size();
-        logInfo("发布统计: 图像：[" + std::to_string(packet.left_image.cols) + "x" + std::to_string(packet.left_image.rows) + "], " +
-                " 当前帧率=" + std::to_string(current_fps_) + 
-                " fps, 设定帧率=" + std::to_string(fps_) +
-                " fps, 平均驱动延迟=" + std::to_string(avg_delay1 * 1000) + 
-                " ms, 平均发布延迟=" + std::to_string(avg_delay2 * 1000) + 
+        logInfo("Publishing statistics: Image: [" + std::to_string(packet.left_image.cols) + "x" + std::to_string(packet.left_image.rows) + "], " +
+                " Current frame rate=" + std::to_string(current_fps_) + 
+                " fps, Set frame rate=" + std::to_string(fps_) +
+                " fps, Average driver delay=" + std::to_string(avg_delay1 * 1000) + 
+                " ms, Average publishing delay=" + std::to_string(avg_delay2 * 1000) + 
                 " ms");
         frame_timestamp_history_.clear();
     }

@@ -4,7 +4,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
-    # 声明参数
+    # Launch configuration variables
     device_index = LaunchConfiguration('device_index', default='0')
     width = LaunchConfiguration('width', default='3840')
     height = LaunchConfiguration('height', default='1080')
@@ -23,7 +23,7 @@ def generate_launch_description():
     left_camera_info_url = LaunchConfiguration('left_camera_info_url', default='')
     right_camera_info_url = LaunchConfiguration('right_camera_info_url', default='')
     
-    # 参数声明
+    # Declare launch arguments
     declare_device_index = DeclareLaunchArgument(
         'device_index',
         default_value='0',
@@ -94,7 +94,7 @@ def generate_launch_description():
         default_value='',
         description='URL to right camera calibration file')
     
-    # 启动相机节点
+    # launch camera node
     stereo_camera_node = Node(
         package='stereo_camera_ros',
         executable='stereo_camera_node',

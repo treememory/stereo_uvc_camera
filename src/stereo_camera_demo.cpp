@@ -9,10 +9,10 @@
 #include <condition_variable>
 #include <signal.h>
 
-// 全局变量用于处理信号
+// Global variables for signal handling
 std::atomic<bool> g_running(true);
 
-// 定义帧结构体，存储左右眼图像和时间戳
+// Frame structure definition, stores left and right eye images and timestamps
 struct StereoFrame {
     cv::Mat left;
     cv::Mat right;
@@ -20,30 +20,30 @@ struct StereoFrame {
     std::chrono::steady_clock::time_point capture_time;
 };
 
-// 帧队列和同步对象
+// Frame queue and synchronization objects
 std::queue<StereoFrame> g_frame_queue;
 std::mutex g_queue_mutex;
 std::condition_variable g_queue_condition;
-const size_t MAX_QUEUE_SIZE = 5; // 最大队列大小，防止内存溢出
+const size_t MAX_QUEUE_SIZE = 5; // Maximum queue size to prevent memory overflow
 
-// FPS统计
+// FPS statistics
 std::atomic<int> g_frame_count(0);
 std::atomic<float> g_current_fps(0.0f);
 std::chrono::steady_clock::time_point g_fps_last_time;
 
-// 信号处理函数
+// Signal handler function
 void signalHandler(int sig) {
-    std::cout << "接收到信号 " << sig << ", 正在退出..." << std::endl;
+    std::cout << "Signal received " << sig << ", exiting..." << std::endl;
     g_running = false;
-    g_queue_condition.notify_all(); // 通知等待的线程退出
+    g_queue_condition.notify_all(); // Notify waiting threads to exit
 }
 
-// 帧回调函数 - 现在只负责将帧放入队列，不再显示图像
+// Frame callback function - now only responsible for putting frames in the queue, no longer displaying images
 void frameCallback(const cv::Mat& left, const cv::Mat& right, uint64_t timestamp, void* user_data) {
-    // 增加帧计数
+    // Increment frame count
     g_frame_count++;
     
-    // 每秒更新一次FPS
+    // Update FPS once per second
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_fps_last_time).count();
     if (elapsed >= 1000) {
@@ -52,56 +52,56 @@ void frameCallback(const cv::Mat& left, const cv::Mat& right, uint64_t timestamp
         g_fps_last_time = now;
     }
     
-    // 创建帧结构体
+    // Create frame structure
     StereoFrame frame;
     left.copyTo(frame.left);
     right.copyTo(frame.right);
     frame.timestamp = timestamp;
     frame.capture_time = now;
     
-    // 加锁访问共享队列
+    // Lock to access shared queue
     {
         std::lock_guard<std::mutex> lock(g_queue_mutex);
         
-        // 如果队列已满，移除最旧的帧
+        // If the queue is full, remove the oldest frame
         while (g_frame_queue.size() >= MAX_QUEUE_SIZE) {
             g_frame_queue.pop();
-            std::cout << "警告: 显示线程延迟，丢弃旧帧" << std::endl;
+            std::cout << "Warning: Display thread delay, dropping old frame" << std::endl;
         }
         
-        // 添加新帧到队列
+        // Add new frame to the queue
         g_frame_queue.push(frame);
     }
     
-    // 通知显示线程有新帧可用
+    // Notify the display thread that a new frame is available
     g_queue_condition.notify_one();
 }
 
-// 显示线程函数 - 专门负责图像显示
+// Display thread function - specifically responsible for image display
 void displayThreadFunction() {
-    // 创建显示窗口
-    cv::namedWindow("左眼图像", cv::WINDOW_NORMAL);
-    cv::namedWindow("右眼图像", cv::WINDOW_NORMAL);
+    // Create display windows
+    cv::namedWindow("Left Eye Image", cv::WINDOW_NORMAL);
+    cv::namedWindow("Right Eye Image", cv::WINDOW_NORMAL);
     
     while (g_running) {
         StereoFrame frame;
         bool has_frame = false;
         
-        // 从队列中获取帧
+        // Get frame from queue
         {
             std::unique_lock<std::mutex> lock(g_queue_mutex);
             
-            // 等待新帧或退出信号
+            // Wait for new frame or exit signal
             g_queue_condition.wait_for(lock, std::chrono::milliseconds(100), []{
                 return !g_frame_queue.empty() || !g_running;
             });
             
-            // 再次检查是否需要退出
+            // Check again if we need to exit
             if (!g_running && g_frame_queue.empty()) {
                 break;
             }
             
-            // 获取帧
+            // Get frame
             if (!g_frame_queue.empty()) {
                 frame = g_frame_queue.front();
                 g_frame_queue.pop();
@@ -109,59 +109,59 @@ void displayThreadFunction() {
             }
         }
         
-        // 处理和显示图像
+        // Process and display images
         if (has_frame) {
-            // 计算延迟
+            // Calculate delay
             auto now = std::chrono::steady_clock::now();
             double display_delay = std::chrono::duration<double, std::milli>(now - frame.capture_time).count();
             
-            // 格式化时间戳
+            // Format timestamp
             uint64_t ts_sec = frame.timestamp / 1000000000ULL;
             uint64_t ts_nsec = frame.timestamp % 1000000000ULL;
             char ts_str[64];
-            sprintf(ts_str, "时间戳: %lu.%09lu", ts_sec, ts_nsec);
+            sprintf(ts_str, "Timestamp: %lu.%09lu", ts_sec, ts_nsec);
             
-            // 添加信息到图像
+            // Add information to the image
             cv::putText(frame.left, ts_str, cv::Point(20, 30), 
                        cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
             
             cv::putText(frame.left, "FPS: " + std::to_string(g_current_fps), cv::Point(20, 60), 
                        cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
             
-            cv::putText(frame.left, "显示延迟: " + std::to_string(display_delay) + "ms", cv::Point(20, 90), 
+            cv::putText(frame.left, "Display delay: " + std::to_string(display_delay) + "ms", cv::Point(20, 90), 
                        cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
             
-            cv::putText(frame.right, "右眼图像", cv::Point(20, 30), 
+            cv::putText(frame.right, "Right Eye Image", cv::Point(20, 30), 
                        cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
             
-            // 显示图像
-            cv::imshow("左眼图像", frame.left);
-            cv::imshow("右眼图像", frame.right);
+            // Display images
+            cv::imshow("Left Eye Image", frame.left);
+            cv::imshow("Right Eye Image", frame.right);
             
-            // 处理键盘事件，使用较短的等待时间，以保持UI响应性
+            // Handle keyboard events, use shorter wait time to keep UI responsive
             int key = cv::waitKey(1);
-            if (key == 27) { // ESC键
+            if (key == 27) { // ESC key
                 g_running = false;
             }
         }
     }
     
-    cv::destroyWindow("左眼图像");
-    cv::destroyWindow("右眼图像");
+    cv::destroyWindow("Left Eye Image");
+    cv::destroyWindow("Right Eye Image");
 }
 
 int main(int argc, char** argv) {
-    // 初始化FPS计时器
+    // Initialize FPS timer
     g_fps_last_time = std::chrono::steady_clock::now();
     
-    // 注册信号处理
+    // Register signal handlers
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
     
-    // 创建相机对象
+    // Create camera object
     StereoCamera camera;
     
-    // 解析命令行参数
+    // Parse command line arguments
     int device_index = 0;
     int width = 3840;
     int height = 1080;
@@ -191,53 +191,53 @@ int main(int argc, char** argv) {
             split_ratio = std::stof(argv[++i]);
         }
         else if (arg == "--help") {
-            std::cout << "双目相机演示程序" << std::endl;
-            std::cout << "用法: " << argv[0] << " [选项]" << std::endl;
-            std::cout << "选项:" << std::endl;
-            std::cout << "  -d <index>     设备索引 (默认: 0)" << std::endl;
-            std::cout << "  -w <width>     宽度 (默认: 1920)" << std::endl;
-            std::cout << "  -h <height>    高度 (默认: 1080)" << std::endl;
-            std::cout << "  -f <fps>       帧率 (默认: 30)" << std::endl;
-            std::cout << "  -m <0|1>       使用MJPEG格式 (默认: 1)" << std::endl;
-            std::cout << "  -s <ratio>     双目分割比例 (默认: 0.5)" << std::endl;
-            std::cout << "  --help         显示帮助" << std::endl;
+            std::cout << "Stereo Camera Demo Program" << std::endl;
+            std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
+            std::cout << "Options:" << std::endl;
+            std::cout << "  -d <index>     Device index (default: 0)" << std::endl;
+            std::cout << "  -w <width>     Width (default: 1920)" << std::endl;
+            std::cout << "  -h <height>    Height (default: 1080)" << std::endl;
+            std::cout << "  -f <fps>       Frame rate (default: 30)" << std::endl;
+            std::cout << "  -m <0|1>       Use MJPEG format (default: 1)" << std::endl;
+            std::cout << "  -s <ratio>     Stereo split ratio (default: 0.5)" << std::endl;
+            std::cout << "  --help         Show help" << std::endl;
             return 0;
         }
     }
     
-    // 设置双目分割比例
+    // Set stereo split ratio
     camera.setStereoSplitRatio(split_ratio);
     
-    // 打开相机
-    std::cout << "正在打开相机..." << std::endl;
+    // Open camera
+    std::cout << "Opening camera..." << std::endl;
     if (!camera.openWithParams(width, height, fps, use_mjpeg, device_index)) {
-        std::cerr << "无法打开相机" << std::endl;
+        std::cerr << "Unable to open camera" << std::endl;
         return -1;
     }
     
-    // 打印设备信息
+    // Print device information
     camera.printDeviceInfo();
     
-    // 设置帧回调
+    // Set frame callback
     camera.setFrameCallback(frameCallback);
     
-    // 启动显示线程
+    // Start display thread
     std::thread display_thread(displayThreadFunction);
     
-    // 主线程等待退出信号
-    std::cout << "相机已打开，按Ctrl+C或ESC退出" << std::endl;
+    // Main thread waits for exit signal
+    std::cout << "Camera is open, press Ctrl+C or ESC to exit" << std::endl;
     while (g_running) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     
-    // 清理资源
+    // Clean up resources
     camera.close();
     
-    // 等待显示线程结束
+    // Wait for display thread to end
     if (display_thread.joinable()) {
         display_thread.join();
     }
     
-    std::cout << "程序已退出" << std::endl;
+    std::cout << "Program has exited" << std::endl;
     return 0;
 }
