@@ -1,4 +1,4 @@
-# Stereo Camera ROS
+# Stereo UVC Camera
 
 [简体中文](README.md) | English
 
@@ -7,6 +7,7 @@ A high-performance USB stereo camera ROS driver supporting both ROS1 and ROS2 pl
 ## Features
 - Support for common USB stereo camera devices (UVC protocol)
 - Compatible with both ROS1 and ROS2 platforms
+- Direct camera preview on Linux systems without ROS dependencies
 - Efficient multi-threaded image processing mechanism
 - Automatic left/right image splitting functionality
 - Support for MJPEG and YUYV formats, prioritizing MJPEG for higher frame rates
@@ -41,7 +42,7 @@ sudo apt-get install -y libopencv-dev libjpeg-dev libuvc-dev
 # Create workspace
 mkdir -p ~/catkin_ws/src
 cd ~/catkin_ws/src
-git clone https://github.com/your-username/stereo_camera_ros.git
+git clone https://github.com/treememory/stereo_uvc_camera
 cd ..
 # Build
 catkin_make
@@ -53,11 +54,21 @@ source devel/setup.bash
 # Create workspace
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-git clone https://github.com/your-username/stereo_camera_ros.git
+git clone https://github.com/treememory/stereo_uvc_camera
 cd ..
 # Build
 colcon build --symlink-install
 source install/setup.bash
+```
+
+#### No Ros
+```bash
+git clone https://github.com/treememory/stereo_uvc_camera
+cd stereo_uvc_camera
+mkdir build
+cd build
+cmake .. 
+make -j4
 ```
 
 ## Quick Start
@@ -68,25 +79,31 @@ roslaunch stereo_camera_ros stereo_camera.launch
 
 # ROS2
 ros2 launch stereo_camera_ros stereo_camera.launch.py
+
+# No Ros
+./stereo_camera_demo
 ```
 
 ### Parameter Configuration
 You can set camera parameters by modifying the launch file or via command line parameters:
 ```bash
 # ROS1
-roslaunch stereo_camera_ros stereo_camera.launch width:=1280 height:=480 fps:=60 device_index:=0
+roslaunch stereo_camera_ros stereo_camera.launch width:=3840 height:=1080 fps:=60 device_index:=0
 
 # ROS2
-ros2 launch stereo_camera_ros stereo_camera.launch.py width:=1280 height:=480 fps:=60 device_index:=0
+ros2 launch stereo_camera_ros stereo_camera.launch.py width:=3840 height:=1080 fps:=60 device_index:=0
+
+# No Ros
+./stereo_camera_demo -w 3840 -h 1080 -f 60 -d 0
 ```
 
 ## Key Parameters
 | Parameter Name | Type | Default Value | Description |
 |----------------|------|---------------|-------------|
 | `device_index` | int | 0 | USB camera device index |
-| `width` | int | 1920 | Requested image width |
+| `width` | int | 3840 | Requested image width |
 | `height` | int | 1080 | Requested image height |
-| `fps` | int | 30 | Requested frame rate |
+| `fps` | int | 60 | Requested frame rate |
 | `use_mjpeg` | bool | true | Whether to use MJPEG format |
 | `split_ratio` | float | 0.5 | Left/right image split ratio (0.1-0.9) |
 | `worker_threads` | int | 4 | Number of image processing worker threads |
@@ -137,13 +154,13 @@ Ensure your system supports hardware-accelerated JPEG decoding:
 ## License
 MIT
 
-## Contributions
-Pull Requests and Issues are welcome!
+## Contributing
+Pull requests and issues are welcome!
 
 ## Author
-Rock
+treememory
 
-## Acknowledgements
+## Acknowledgments
 - libuvc development team
 - OpenCV community
 - ROS community

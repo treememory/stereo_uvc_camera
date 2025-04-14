@@ -1,4 +1,4 @@
-# Stereo Camera ROS
+# Stereo UVC Camera
 
 简体中文 | [English](README_EN.md)
 
@@ -8,6 +8,7 @@
 
 - 支持通用USB双目相机设备 (UVC协议)
 - 支持ROS1和ROS2双平台
+- 支持无需ROS依赖在Linux系统下直接预览双目相机
 - 高效的多线程图像处理机制
 - 自动左右图像分割功能
 - 支持MJPEG和YUYV格式，优先使用MJPEG以获得更高的帧率
@@ -39,6 +40,7 @@
 # Ubuntu系统
 sudo apt-get update
 sudo apt-get install -y libopencv-dev libjpeg-dev libuvc-dev
+```
 
 ### 编译驱动
 
@@ -48,7 +50,7 @@ sudo apt-get install -y libopencv-dev libjpeg-dev libuvc-dev
 # 创建工作空间
 mkdir -p ~/catkin_ws/src
 cd ~/catkin_ws/src
-git clone https://github.com/your-username/stereo_camera_ros.git
+git clone https://github.com/treememory/stereo_uvc_camera
 cd ..
 
 # 编译
@@ -62,12 +64,22 @@ source devel/setup.bash
 # 创建工作空间
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-git clone https://github.com/your-username/stereo_camera_ros.git
+git clone https://github.com/treememory/stereo_uvc_camera
 cd ..
 
 # 编译
 colcon build --symlink-install
 source install/setup.bash
+```
+
+#### 非Ros环境
+```bash
+git clone https://github.com/treememory/stereo_uvc_camera
+cd stereo_uvc_camera
+mkdir build
+cd build
+cmake .. 
+make -j4
 ```
 
 ## 快速开始
@@ -80,6 +92,10 @@ roslaunch stereo_camera_ros stereo_camera.launch
 
 # ROS2
 ros2 launch stereo_camera_ros stereo_camera.launch.py
+
+# 非Ros
+./stereo_camera_demo
+
 ```
 
 ### 参数配置
@@ -88,10 +104,13 @@ ros2 launch stereo_camera_ros stereo_camera.launch.py
 
 ```bash
 # ROS1
-roslaunch stereo_camera_ros stereo_camera.launch width:=1280 height:=480 fps:=60 device_index:=0
+roslaunch stereo_camera_ros stereo_camera.launch width:=3840 height:=1080 fps:=60 device_index:=0
 
 # ROS2
-ros2 launch stereo_camera_ros stereo_camera.launch.py width:=1280 height:=480 fps:=60 device_index:=0
+ros2 launch stereo_camera_ros stereo_camera.launch.py width:=3840 height:=1080 fps:=60 device_index:=0
+
+# 非Ros
+./stereo_camera_demo -w 3840 -h 1080 -f 60 -d 0
 ```
 
 ## 关键参数
@@ -99,9 +118,9 @@ ros2 launch stereo_camera_ros stereo_camera.launch.py width:=1280 height:=480 fp
 | 参数名 | 类型 | 默认值 | 说明 |
 |--------|------|-------|------|
 | `device_index` | int | 0 | USB相机设备索引 |
-| `width` | int | 1920 | 请求的图像宽度 |
+| `width` | int | 3840 | 请求的图像宽度 |
 | `height` | int | 1080 | 请求的图像高度 |
-| `fps` | int | 30 | 请求的帧率 |
+| `fps` | int | 60 | 请求的帧率 |
 | `use_mjpeg` | bool | true | 是否使用MJPEG格式 |
 | `split_ratio` | float | 0.5 | 左右图像分割比例 (0.1-0.9) |
 | `worker_threads` | int | 4 | 图像处理工作线程数 |
@@ -168,7 +187,7 @@ MIT
 
 ## 作者
 
-Rock
+treememory
 
 ## 致谢
 

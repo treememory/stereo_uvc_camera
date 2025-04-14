@@ -13,9 +13,9 @@ elseif(DEFINED ENV{ROS_DISTRO})
   endif()
   message(STATUS "Detected ROS_VERSION=${ROS_VERSION} from ROS_DISTRO=$ENV{ROS_DISTRO}")
 else()
-  # 默认使用ROS1
-  set(ROS_VERSION 1)
-  message(STATUS "No ROS_VERSION or ROS_DISTRO set; defaulting to ROS_VERSION=1")
+  # 默认使用 No Ros
+  set(ROS_VERSION 0)
+  message(STATUS "No ROS_VERSION or ROS_DISTRO set; defaulting to ROS_VERSION=0")
 endif()
 
 # 配置构建类型
@@ -104,7 +104,7 @@ if(${ROS_VERSION} EQUAL 1)
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
   )
 
-else()
+elseif(${ROS_VERSION} EQUAL 2)
   message(STATUS "Building for ROS2")
   
   # 设置C++标准
@@ -207,4 +207,31 @@ else()
   )
 
   ament_package()
+else()
+  # 系统依赖
+  find_package(OpenCV REQUIRED)
+  find_package(JPEG REQUIRED)
+  find_package(Threads REQUIRED)
+
+  # 包含目录
+  include_directories(
+    include
+    ${OpenCV_INCLUDE_DIRS}
+    ${JPEG_INCLUDE_DIR}
+  )
+
+  # 添加stereo_camera库
+  add_library(stereo_camera
+    src/stereo_camera.cpp
+  )
+  target_include_directories(stereo_camera PUBLIC include/${PROJECT_NAME})
+  target_link_libraries(stereo_camera
+    ${OpenCV_LIBS}
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${JPEG_LIBRARIES}
+    uvc
+  )
+
+  add_executable(stereo_camera_demo src/stereo_camera_demo.cpp)
+  target_link_libraries(stereo_camera_demo stereo_camera ${OpenCV_LIBS} ${CMAKE_THREAD_LIBS_INIT})
 endif()
