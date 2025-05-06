@@ -15,15 +15,29 @@
   <arg name="right_frame_id" default="right_camera_optical_frame" />
   
   <!-- Topic Names -->
-  <arg name="left_image_topic" default="/left_camera" />
-  <arg name="right_image_topic" default="/right_camera" />
+  <arg name="left_image_topic" default="left" />
+  <arg name="right_image_topic" default="right" />
+  
+  <!-- Throttle Parameters -->
+  <arg name="throttle_rate" default="4.0" />
+  <arg name="throttled_left_image_topic" default="$(arg left_image_topic)/throttled" />
+  <arg name="throttled_right_image_topic" default="$(arg right_image_topic)/throttled" />
+
+  <!-- Synchronized throttle node to publish images at reduced rate (4Hz) with synchronization -->
+  <node name="sync_throttle_node" pkg="stereo_camera_ros" type="sync_throttle.py" output="screen">
+    <param name="throttle_rate" value="$(arg throttle_rate)" />
+    <param name="left_image_topic" value="/stereo_camera/$(arg left_image_topic)" />
+    <param name="right_image_topic" value="/stereo_camera/$(arg right_image_topic)" />
+    <param name="throttled_left_topic" value="/stereo_camera/$(arg throttled_left_image_topic)" />
+    <param name="throttled_right_topic" value="/stereo_camera/$(arg throttled_right_image_topic)" />
+  </node>
   
   <!-- Camera Info -->
   <arg name="left_camera_info_url" default="" />
   <arg name="right_camera_info_url" default="" />
 
   <!-- Start the camera node -->
-  <node name="stereo_camera_node" pkg="stereo_camera_ros" type="stereo_camera_node" output="screen">
+  <node name="stereo_camera" pkg="stereo_camera_ros" type="stereo_camera_node" output="screen">
     <param name="device_index" value="$(arg device_index)" />
     <param name="width" value="$(arg width)" />
     <param name="height" value="$(arg height)" />

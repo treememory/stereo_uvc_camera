@@ -103,6 +103,12 @@ if(${ROS_VERSION} EQUAL 1)
   install(DIRECTORY config/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
   )
+    
+  # Install Python scripts
+  catkin_install_python(PROGRAMS
+    src/sync_throttle.py
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  )
 
 elseif(${ROS_VERSION} EQUAL 2)
   message(STATUS "Building for ROS2")

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <boost/circular_buffer.hpp>
+#include <opencv2/calib3d.hpp>
 
 #include "stereo_camera_ros/stereo_camera.hpp"
 
@@ -53,9 +54,20 @@ private:
     Publisher<CameraInfo> left_info_pub_;
     Publisher<CameraInfo> right_info_pub_;
     
+    // Rectified image publishers
+    ImagePublisher left_rect_img_pub_;
+    ImagePublisher right_rect_img_pub_;
+    
     // Camera info managers
     std::shared_ptr<CameraInfoManager> left_camera_info_manager_;
     std::shared_ptr<CameraInfoManager> right_camera_info_manager_;
+    
+    // Stereo rectification parameters
+    bool enable_rectification_;
+    bool show_rectification_visual_;  // On/off switch for visualization
+    cv::Mat left_map1_, left_map2_;   // Rectification maps for left camera
+    cv::Mat right_map1_, right_map2_; // Rectification maps for right camera
+    bool rectification_maps_initialized_; // Flag to check if maps are initialized
     
     // Camera
     std::unique_ptr<StereoCamera> camera_;
@@ -87,6 +99,13 @@ private:
     void startProcessingThread();
     void processFrames();
     void publishFrame(const FramePacket& packet);
+    
+    // Stereo rectification methods
+    bool initRectificationMaps();
+    void publishRectifiedImages(const cv::Mat& left, const cv::Mat& right, 
+                               const Time& timestamp, const std::string& left_frame_id, 
+                               const std::string& right_frame_id);
+    cv::Mat createRectificationVisualization(const cv::Mat& left_rect, const cv::Mat& right_rect);
     
     // Configuration and status methods
     void timerCallback();

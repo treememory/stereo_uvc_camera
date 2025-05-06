@@ -21,6 +21,10 @@ StereoCameraNode::StereoCameraNode(NodePtr& main_node, NodePtr& private_node)
     right_camera_info_url_ = "";
     left_image_topic_ = "left/image_raw";
     right_image_topic_ = "right/image_raw";
+
+    enable_rectification_ = true;
+    show_rectification_visual_ = true;
+    rectification_maps_initialized_ = false;
     
     get_param(private_node_, "device_index", device_index_);
     get_param(private_node_, "width", width_);
@@ -36,6 +40,8 @@ StereoCameraNode::StereoCameraNode(NodePtr& main_node, NodePtr& private_node)
     get_param(private_node_, "right_camera_info_url", right_camera_info_url_);
     get_param(private_node_, "left_image_topic", left_image_topic_);
     get_param(private_node_, "right_image_topic", right_image_topic_);
+    get_param(private_node_, "enable_rectification", enable_rectification_);
+    get_param(private_node_, "show_rectification_visual", show_rectification_visual_);
     
     // Get package path for calibration files
     std::string pkg_path = get_package_share_directory("stereo_camera_ros");
@@ -54,8 +60,8 @@ StereoCameraNode::StereoCameraNode(NodePtr& main_node, NodePtr& private_node)
     }
     
     // Initialize camera info managers
-    auto left_camera_node = get_camera_info_node(node_);
-    auto right_camera_node = get_camera_info_node(node_);
+    auto left_camera_node = get_camera_info_node(private_node_);
+    auto right_camera_node = get_camera_info_node(private_node_);
     
     left_camera_info_manager_ = std::make_shared<CameraInfoManager>(
         left_camera_node, left_camera_name_, left_camera_info_url_);
@@ -63,12 +69,16 @@ StereoCameraNode::StereoCameraNode(NodePtr& main_node, NodePtr& private_node)
         right_camera_node, right_camera_name_, right_camera_info_url_);
         
     // Set image publishers
-    left_img_pub_ = create_image_publisher(node_, left_image_topic_, 1);
-    right_img_pub_ = create_image_publisher(node_, right_image_topic_, 1);
+    left_img_pub_ = create_image_publisher(private_node_, left_image_topic_, 1);
+    right_img_pub_ = create_image_publisher(private_node_, right_image_topic_, 1);
+    
+    // Set rectified image publishers
+    left_rect_img_pub_ = create_image_publisher(private_node_, left_image_topic_+"_rect", 1);
+    right_rect_img_pub_ = create_image_publisher(private_node_, right_image_topic_+"_rect", 1);
     
     // Set camera info publishers
-    left_info_pub_ = create_publisher<CameraInfo>(node_, "camera_info/left", 1);
-    right_info_pub_ = create_publisher<CameraInfo>(node_, "camera_info/right", 1);
+    left_info_pub_ = create_publisher<CameraInfo>(private_node_, "left/camera_info", 1);
+    right_info_pub_ = create_publisher<CameraInfo>(private_node_, "right/camera_info", 1); 
     
     // Initialize camera
     camera_.reset(new StereoCamera());
